@@ -13,7 +13,7 @@ start_server() {
 }
 
 main() {
-    alembic upgrade head
+    uv run alembic upgrade head
     start_server
 }
 
