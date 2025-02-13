@@ -32,11 +32,13 @@ class WorkflowExecutor:
     def __init__(
         self,
         workflow: WorkflowDefinitionSchema,
+        node_factory: NodeFactory,
         task_recorder: Optional[TaskRecorder] = None,
         context: Optional[WorkflowExecutionContext] = None,
     ):
         # Process subworkflows before initializing other attributes
         self.workflow = self._process_subworkflows(workflow)
+        self.node_factory = node_factory
         if task_recorder:
             self.task_recorder = task_recorder
         elif context and context.run_id and context.db_session:
@@ -260,7 +262,7 @@ class WorkflowExecutor:
                 self._outputs[node_id] = None
                 raise UnconnectedNode(f"Node {node_id} has no input")
 
-            node_instance = NodeFactory.create_node(
+            node_instance = self.node_factory.create_node(
                 node_name=node.title, node_type_name=node.node_type, config=node.config
             )
             self.node_instances[node_id] = node_instance
@@ -331,7 +333,7 @@ class WorkflowExecutor:
             for node_id, output in precomputed_outputs.items():
                 try:
                     if isinstance(output, dict):
-                        self._outputs[node_id] = NodeFactory.create_node(
+                        self._outputs[node_id] = self.node_factory.create_node(
                             node_name=self._node_dict[node_id].title,
                             node_type_name=self._node_dict[node_id].node_type,
                             config=self._node_dict[node_id].config,
@@ -359,8 +361,9 @@ class WorkflowExecutor:
             ),
         )
         self._initial_inputs[input_node.id] = input
+        
         # also update outputs for input node
-        input_node_obj = NodeFactory.create_node(
+        input_node_obj = self.node_factory.create_node(
             node_name=input_node.title,
             node_type_name=input_node.node_type,
             config=input_node.config,

@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path  # Import Path for directory handling
 from typing import Awaitable, Dict, Any, List, Optional
 
+from ..nodes.factory import NodeFactory, get_node_factory
+
 from ..schemas.run_schemas import (
     StartRunRequestSchema,
     RunResponseSchema,
@@ -156,6 +158,7 @@ async def run_workflow_non_blocking(
     start_run_request: StartRunRequestSchema,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    node_factory: NodeFactory = Depends(get_node_factory),
     run_type: str = "interactive",
 ) -> RunResponseSchema:
     workflow = db.query(WorkflowModel).filter(WorkflowModel.id == workflow_id).first()
@@ -203,6 +206,7 @@ async def run_workflow_non_blocking(
                 workflow=workflow_definition,
                 task_recorder=task_recorder,
                 context=context,
+                node_factory=node_factory,
             )
             try:
                 assert run.initial_inputs
@@ -233,13 +237,15 @@ async def run_workflow_non_blocking(
     description="Run a partial workflow and return the outputs",
 )
 async def run_partial_workflow(
-    workflow_id: str, request: PartialRunRequestSchema, db: Session = Depends(get_db)
+    workflow_id: str, request: PartialRunRequestSchema, db: Session = Depends(get_db), node_factory: NodeFactory = Depends(get_node_factory)
 ) -> Dict[str, Any]:
     workflow = db.query(WorkflowModel).filter(WorkflowModel.id == workflow_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    
     workflow_definition = WorkflowDefinitionSchema.model_validate(workflow.definition)
-    executor = WorkflowExecutor(workflow_definition)
+    executor = WorkflowExecutor(workflow_definition, node_factory=node_factory)
+    
     input_node = next(
         node for node in workflow_definition.nodes if node.node_type == "InputNode"
     )

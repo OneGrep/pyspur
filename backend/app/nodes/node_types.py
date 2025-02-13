@@ -2,6 +2,41 @@ from typing import Dict, List
 
 from ..schemas.node_type_schemas import NodeTypeSchema
 
+from pydantic import BaseModel, Field
+
+
+class NodeGroup(BaseModel):
+    """
+    Pydantic model for node group properties.
+    """
+
+    name: str = Field(...)
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        if isinstance(other, NodeGroup):
+            return self.name == other.name
+        return False
+
+
+class NodeCategory(BaseModel):
+    """
+    Pydantic model for node category properties.
+    """
+
+    name: str = Field(...)
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        if isinstance(other, NodeCategory):
+            return self.name == other.name
+        return False
+
+
 # Simple lists of supported and deprecated node types
 
 LOGIC = [
@@ -205,15 +240,25 @@ def get_all_node_types() -> Dict[str, List[NodeTypeSchema]]:
     return node_type_groups
 
 
-def is_valid_node_type(node_type_name: str) -> bool:
+def get_supported_node_types_by_group() -> Dict[NodeGroup, List[NodeTypeSchema]]:
     """
-    Checks if a node type is valid (supported or deprecated).
+    Returns a dictionary of all available node types grouped by category.
     """
-    for node_types in SUPPORTED_NODE_TYPES.values():
-        for node_type in node_types:
-            if node_type["node_type_name"] == node_type_name:
-                return True
-    for node_type in DEPRECATED_NODE_TYPES:
-        if node_type["node_type_name"] == node_type_name:
-            return True
-    return False
+    node_type_groups: Dict[NodeGroup, List[NodeTypeSchema]] = {}
+    for group_name, node_types in SUPPORTED_NODE_TYPES.items():
+        node_group = NodeGroup(name=group_name)
+        node_type_groups[node_group] = []
+        for node_type_dict in node_types:
+            node_type = NodeTypeSchema.model_validate(node_type_dict)
+            node_type_groups[node_group].append(node_type)
+    return node_type_groups
+
+
+def get_deprecated_node_types() -> List[NodeTypeSchema]:
+    """
+    Returns a list of all deprecated node types.
+    """
+    return [
+        NodeTypeSchema.model_validate(node_type) for node_type in DEPRECATED_NODE_TYPES
+    ]
+

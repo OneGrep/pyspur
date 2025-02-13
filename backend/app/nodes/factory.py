@@ -1,15 +1,15 @@
 import importlib
-from typing import Any, List, Dict
+from typing import Annotated, Any, List, Dict
+
+from fastapi import Depends
+
+from .onegrep_types import OneGrepNodeRepository, get_onegrep_node_repository
+
+from .repository import CompositeNodeRepository, NodeRepository, StaticNodeRepository
 
 from ..schemas.node_type_schemas import NodeTypeSchema
 from .base import BaseNode
-
-from .node_types import (
-    SUPPORTED_NODE_TYPES,
-    get_all_node_types,
-    is_valid_node_type,
-)
-
+from .node_types import NodeGroup
 
 class NodeFactory:
     """
@@ -40,36 +40,48 @@ class NodeFactory:
     - Module name: llm.mcts
     """
 
-    @staticmethod
-    def get_all_node_types() -> Dict[str, List[NodeTypeSchema]]:
+    def __init__(self, node_repository: NodeRepository):
+        self.node_repository = node_repository
+
+    def get_all_node_types_by_group(self) -> Dict[NodeGroup, List[NodeTypeSchema]]:
         """
         Returns a dictionary of all available node types grouped by category.
         """
-        return get_all_node_types()
+        return self.node_repository.get_all_node_types_by_group()
 
-    @staticmethod
-    def create_node(node_name: str, node_type_name: str, config: Any) -> BaseNode:
+    def is_valid_node_type(self, node_type_name: str) -> bool:
+        """
+        Checks if a node type is valid.
+        """
+        return self.node_repository.is_valid_node_type(node_type_name)
+
+    def create_node(self, node_name: str, node_type_name: str, config: Any) -> BaseNode:
         """
         Creates a node instance from a configuration.
         """
-        if not is_valid_node_type(node_type_name):
+        if not self.node_repository.is_valid_node_type(node_type_name):
             raise ValueError(f"Node type '{node_type_name}' is not valid.")
 
-        module_name = None
-        class_name = None
-        # Use the imported _SUPPORTED_NODE_TYPES
-        for node_group in SUPPORTED_NODE_TYPES.values():
-            for node_type in node_group:
-                if node_type["node_type_name"] == node_type_name:
-                    module_name = node_type["module"]
-                    class_name = node_type["class_name"]
-                    break
-            if module_name and class_name:
-                break
-
-        if not module_name or not class_name:
-            raise ValueError(f"Node type '{node_type_name}' not found.")
-
-        module = importlib.import_module(module_name, package="app")
-        node_class = getattr(module, class_name)
+        node_type_schema = self.node_repository.get_node_type(node_type_name)
+        node_class = node_type_schema.node_class
         return node_class(name=node_name, config=node_class.config_model(**config))
+
+
+async def get_node_repository(
+    onegrep_node_repository: Annotated[
+        OneGrepNodeRepository, Depends(get_onegrep_node_repository)
+    ]
+) -> NodeRepository:
+    """
+    Returns a node repository.
+    """
+    return CompositeNodeRepository([StaticNodeRepository(), onegrep_node_repository])
+
+
+async def get_node_factory(
+    node_repository: Annotated[NodeRepository, Depends(get_node_repository)]
+) -> NodeFactory:
+    """
+    Returns a node factory.
+    """
+    return NodeFactory(node_repository)

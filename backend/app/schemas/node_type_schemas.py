@@ -1,17 +1,30 @@
 import importlib
+from typing import Callable, Optional
 
 from pydantic import BaseModel
 
+from ..nodes.base import BaseNode
+
+def import_node_class(module: str, class_name: str) -> BaseNode:
+    module = importlib.import_module(name=f"{module}", package="app")
+    return getattr(module, class_name)
+
+NodeTypeClassGenerator = Callable[[], BaseNode]
 
 class NodeTypeSchema(BaseModel):
     node_type_name: str
     class_name: str
-    module: str
+    module: Optional[str] = None # Only needed if the node is statically defined
+
+    node_class_generator: Optional[NodeTypeClassGenerator] = None
 
     @property
     def node_class(self):
-        module = importlib.import_module(name=f"{self.module}", package="app")
-        return getattr(module, self.class_name)
+        if self.node_class_generator:
+            return self.node_class_generator()
+        if self.module:
+            return import_node_class(self.module, self.class_name)
+        raise ValueError("Node class not found")
 
     @property
     def input_model(self):
